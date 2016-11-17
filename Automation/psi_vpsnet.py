@@ -84,24 +84,28 @@ def wait_on_action(vpsnet_conn, node, interval=30):
 
 def get_region_name(region):
     '''
-        65:  LON-K-SSD:                     London GB
+        65:  LON-K-SSD:                     London GB (Not available)
         66:  SLC-G-SSD:                     Salt Lake City US
-        91:  LON-M-SSD:                     London GB
+        91:  LON-M-SSD:                     London GB (Not available)
         113: SLC-H-SSD:                     Salt Lake City US
         116: (New York) - NYC-A-SSD:        US
         117: (Los Angeles) - LAX-A-SSD:     US
         118: SLC-K-SSD:                     Salt Lake City US
         119: TOR-A-SSD:                     Toronto CA
         120: AMS-B-SSD:                     Amsterdam NL
-        121: LON-P-SSD:                     London GB
+        121: LON-P-SSD:                     London GB (Not available)
         124: (Miami) - MIA-A-SSD:           Miami US
         125: (Chicago) - CHI-C-SSD:         Chicago US
+        126: (Dallas) - DAL-B-SSD           Dallas US
+        127: LON-R-SSD                      London GB
+        128: VAN-A-SSD                      Vancouver CA
+        129: (New York) - NYC-B-SSH         New York US
     '''
-    if region['cloud_id'] in [65, 91, 121]:
+    if region['cloud_id'] in [65, 91, 121, 127]:
         return 'GB'
-    if region['cloud_id'] in [66, 113, 116, 117, 118, 124, 125]:
+    if region['cloud_id'] in [66, 113, 116, 117, 118, 124, 125, 126, 129]:
         return 'US'
-    if region['cloud_id'] in [119]:
+    if region['cloud_id'] in [119, 128]:
         return 'CA'
     if region['cloud_id'] in [120]:
         return 'NL'
