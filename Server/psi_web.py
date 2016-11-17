@@ -68,7 +68,7 @@ psinet = psi_ops.PsiphonNetwork.load_from_file(psi_config.DATA_FILE_NAME)
 
 # ===== Globals =====
 
-CLIENT_VERIFICATION_REQUIRED = True
+CLIENT_VERIFICATION_REQUIRED = False
 
 # one week TTL
 CLIENT_VERIFICATION_TTL_SECONDS = 60 * 60 * 24 * 7
