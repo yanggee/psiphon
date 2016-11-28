@@ -743,9 +743,9 @@ class ServerInstance(object):
                 if 'remote_server_list_stats' in stats.keys():
                     for remote_server_list in stats['remote_server_list_stats']:
                         self._log_event('remote_server_list', inputs + [
-                            ('client_download_timestamp', tunnel['client_download_timestamp']),
-                            ('url', tunnel['url']),
-                            ('etag', tunnel['etag'])])
+                            ('client_download_timestamp', remote_server_list['client_download_timestamp']),
+                            ('url', remote_server_list['url']),
+                            ('etag', remote_server_list['etag'])])
 
             except:
                 # Note that this response will cause clients to keep trying to send the same stats repeatedly, so bugs in the above code block
