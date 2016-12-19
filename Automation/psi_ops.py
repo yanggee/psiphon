@@ -37,6 +37,7 @@ import zlib
 import copy
 import subprocess
 import traceback
+import shutil
 from pkg_resources import parse_version
 from multiprocessing.pool import ThreadPool
 from collections import defaultdict
@@ -377,10 +378,12 @@ class PsiphonNetwork(psi_ops_cms.PersistentObject):
         self.__TCS_OSL_config = None
         self.__TCS_psiphond_config_values = None
 
+        self.__default_sponsor_id = None
+
         if initialize_plugins:
             self.initialize_plugins()
 
-    class_version = '0.38'
+    class_version = '0.39'
 
     def upgrade(self):
         if cmp(parse_version(self.version), parse_version('0.1')) < 0:
@@ -620,6 +623,9 @@ class PsiphonNetwork(psi_ops_cms.PersistentObject):
         if cmp(parse_version(self.version), parse_version('0.38')) < 0:
             self.__TCS_OSL_config = "{}"
             self.version = '0.38'
+        if cmp(parse_version(self.version), parse_version('0.39')) < 0:
+            self.__default_sponsor_id = None
+            self.version = '0.39'
 
     def initialize_plugins(self):
         for plugin in plugins:
@@ -984,7 +990,7 @@ class PsiphonNetwork(psi_ops_cms.PersistentObject):
         with open(website_banner_filename, 'rb') as file:
             website_banner = file.read()
         # Ensure that the banner is a PNG
-        assert(banner[:8] == '\x89PNG\r\n\x1a\n')
+        assert(website_banner[:8] == '\x89PNG\r\n\x1a\n')
         sponsor = self.get_sponsor_by_name(name)
         sponsor.website_banner = base64.b64encode(website_banner)
         sponsor.website_banner_link = website_banner_link
@@ -1304,6 +1310,87 @@ class PsiphonNetwork(psi_ops_cms.PersistentObject):
                     alternate_ssh_obfuscated_ports,
                     )
 
+    def export_host_and_server(self, host_id_list):
+
+        import pickle
+        exp_entry = list()
+
+        for host_id in host_id_list:
+            host = self.__hosts[host_id]
+            server = [s for s in self.get_servers() if s.host_id == host.id][0]
+
+            exp_host = (host.id,
+                        host.is_TCS,
+                        host.provider,
+                        host.provider_id,
+                        host.ip_address,
+                        host.ssh_port,
+                        host.ssh_username,
+                        host.ssh_password,
+                        host.ssh_host_key,
+                        host.stats_ssh_username,
+                        host.stats_ssh_password,
+                        host.datacenter_name,
+                        host.region,
+                        host.meek_server_port,
+                        host.meek_server_obfuscated_key,
+                        host.meek_server_fronting_domain,
+                        host.meek_server_fronting_host,
+                        host.alternate_meek_server_fronting_hosts,
+                        host.meek_cookie_encryption_public_key,
+                        host.meek_cookie_encryption_private_key)
+
+            exp_server = (server.id,
+                            server.host_id,
+                            server.ip_address,
+                            server.egress_ip_address,
+                            server.internal_ip_address,
+                            server.propagation_channel_id,
+                            server.is_embedded,
+                            server.is_permanent,
+                            server.discovery_date_range,
+                            server.capabilities,
+                            server.web_server_port,
+                            server.web_server_secret,
+                            server.web_server_certificate,
+                            server.web_server_private_key,
+                            server.ssh_port,
+                            server.ssh_username,
+                            server.ssh_password,
+                            server.ssh_host_key,
+                            server.TCS_ssh_private_key,
+                            server.ssh_obfuscated_port,
+                            server.ssh_obfuscated_key,
+                            server.alternate_ssh_obfuscated_ports)
+
+            exp_entry.append([exp_host, exp_server])
+
+        with open("entries.txt", 'ab') as export_file:
+            pickle.dump(exp_entry, export_file)
+
+
+    def import_host_and_server(self):
+
+        import pickle
+
+        assert(self.is_locked)
+
+        with open("entries.txt", "rb") as import_file:
+            entries_list = pickle.load(import_file)
+
+            for imp_entry in entries_list:
+
+                host = Host(*imp_entry[0])
+                server = Server(*imp_entry[1])
+
+                assert(host.id not in self.__hosts)
+                assert(server.id not in self.__servers)
+
+                self.__hosts[host.id] = host
+                self.__servers[server.id] = server
+
+
+
     def import_host(self, id, use_TCS, provider, provider_id, ip_address, ssh_port, ssh_username, ssh_password, ssh_host_key,
                     stats_ssh_username, stats_ssh_password):
         assert(self.is_locked)
@@ -1474,7 +1561,7 @@ class PsiphonNetwork(psi_ops_cms.PersistentObject):
 
         def _launch_new_server(_):
             try:
-                is_TCS = random.choice([True, False])
+                is_TCS = True
                 return self.launch_new_server(is_TCS)
             except:
                 return None
@@ -2471,6 +2558,91 @@ class PsiphonNetwork(psi_ops_cms.PersistentObject):
                 self.__deploy_website_required_for_sponsors.remove(sponsor_id)
                 self.save()
 
+    def pave_OSLs(self, offset, count):
+
+        # Now pave full OSL file sets for all propagation channels in the OSL config.
+        # Note: currently paves only empty OSLs
+
+        osl_config_filename = os.path.join('.', 'osl_config.json')
+        signing_key_filename = os.path.join('.', 'signing_key.pem')
+        output_dir = tempfile.mkdtemp(prefix='osl')
+
+        try:
+            # Pave full OSL file sets for all propagation channels in the OSL config.
+            # Note: currently paves only empty OSLs
+
+            osl_config_file = open(osl_config_filename, 'w')
+            osl_config_file.write(self.__TCS_OSL_config)
+            osl_config_file.close()
+
+            signing_key_file = open(signing_key_filename, 'w')
+            signing_key_file.write(self.__get_remote_server_list_signing_key_pair().pem_key_pair)
+            signing_key_file.close()
+
+            config = json.loads(self.__TCS_OSL_config)
+
+            paved_propagation_channel_ids = set()
+
+            for scheme_index, scheme in enumerate(config['Schemes']):
+
+                # Source: https://github.com/Psiphon-Labs/psiphon-tunnel-core/tree/master/psiphon/common/osl/paver
+                paver_binary = 'paver.exe'
+                if os.name == 'posix':
+                    paver_binary = 'paver'
+
+                retcode = subprocess.call(
+                    [os.path.join('.', paver_binary),
+                     "-config", osl_config_filename,
+                     "-scheme", str(scheme_index),
+                     "-key", signing_key_filename,
+                     "-offset", str(offset),
+                     "-count", str(count),
+                     "-output", output_dir])
+
+                if retcode != 0:
+                    raise "paver failed"
+
+                for propagation_channel_id in scheme['PropagationChannelIDs']:
+
+                    prop_dir = os.path.join(output_dir, propagation_channel_id)
+                    upload_filenames = [os.path.join(prop_dir, filename) for filename in os.listdir(prop_dir)]
+
+                    for sponsor in self.__sponsors.itervalues():
+                        for campaign in sponsor.campaigns:
+                            if campaign.propagation_channel_id == str(propagation_channel_id):
+                                psi_ops_s3.update_s3_osl_with_files(
+                                    self.__aws_account,
+                                    campaign.s3_bucket_name,
+                                    upload_filenames)
+
+                    paved_propagation_channel_ids.add(propagation_channel_id)
+
+            # Ensure all other buckets have a valid, empty osl-registry. Clients will
+            # expect this to exist regardless of whether a propagation channel is part
+            # of the OSL config.
+
+            empty_osl_registry = zlib.compress(psi_ops_crypto_tools.make_signed_data(
+                    self.__get_remote_server_list_signing_key_pair().pem_key_pair,
+                    REMOTE_SERVER_SIGNING_KEY_PAIR_PASSWORD,
+                    base64.b64encode('{}')))
+
+            for sponsor in self.__sponsors.itervalues():
+                for campaign in sponsor.campaigns:
+                    if not campaign.propagation_channel_id in paved_propagation_channel_ids:
+                        psi_ops_s3.update_s3_osl_key(
+                            self.__aws_account,
+                            campaign.s3_bucket_name,
+                            'osl-registry',
+                            empty_osl_registry)
+
+        finally:
+            try:
+                os.remove(osl_config_filename)
+                os.remove(signing_key_filename)
+                shutil.rmtree(output_dir, ignore_errors=True)
+            except:
+                pass
+
     def update_static_site_content(self, sponsor, campaign, do_generate=False):
         assert(self.is_locked)
 
@@ -2997,6 +3169,9 @@ class PsiphonNetwork(psi_ops_cms.PersistentObject):
         if CLIENT_PLATFORM_ANDROID.lower() in client_platform_string.lower():
             platform = CLIENT_PLATFORM_ANDROID
 
+        if sponsor_id not in self.__sponsors and self.__default_sponsor_id and self.__default_sponsor_id in self.__sponsors:
+            sponsor_id = self.__default_sponsor_id
+
         # Randomly choose one landing page from a set of landing pages
         # to give the client to open when connection established
         homepages = self.__get_sponsor_home_pages(sponsor_id, client_region, platform)
@@ -3217,6 +3392,8 @@ class PsiphonNetwork(psi_ops_cms.PersistentObject):
                     speed_test_url.server_port,
                     speed_test_url.request_path))
 
+        copy.__default_sponsor_id = self.__default_sponsor_id
+
         return jsonpickle.encode(copy)
 
     def __json_serializer(self, obj):
@@ -3358,7 +3535,8 @@ class PsiphonNetwork(psi_ops_cms.PersistentObject):
             "client_versions": copy.__client_versions,
             "hosts": copy.__hosts,
             "servers": server_list,
-            "sponsors": copy.__sponsors
+            "sponsors": copy.__sponsors,
+            "default_sponsor_id": self.__default_sponsor_id
         }, default=self.__json_serializer)
 
 
