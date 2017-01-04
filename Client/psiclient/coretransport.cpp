@@ -32,12 +32,14 @@
 #include "diagnostic_info.h"
 #include "embeddedvalues.h"
 #include "utilities.h"
+#include "authenticated_data_package.h"
 
 using namespace std::experimental;
 
 
 #define AUTOMATICALLY_ASSIGNED_PORT_NUMBER   0
 #define EXE_NAME                             _T("psiphon-tunnel-core.exe")
+#define UPGRADE_EXE_NAME                     _T("psiphon3.exe.upgrade")
 #define URL_PROXY_EXE_NAME                   _T("psiphon-url-proxy.exe")
 #define MAX_LEGACY_SERVER_ENTRIES            30
 #define LEGACY_SERVER_ENTRY_LIST_NAME        (string(LOCAL_SETTINGS_REGISTRY_VALUE_SERVERS) + "OSSH").c_str()
@@ -338,6 +340,8 @@ bool CoreTransport::WriteParameterFiles(tstring& configFilename, tstring& server
         return false;
     }
 
+    auto upgradeFilePath = filesystem::path(shortDataStoreDirectory).append(UPGRADE_EXE_NAME);
+
     Json::Value config;
     config["ClientPlatform"] = CLIENT_PLATFORM;
     config["ClientVersion"] = CLIENT_VERSION;
@@ -350,6 +354,9 @@ bool CoreTransport::WriteParameterFiles(tstring& configFilename, tstring& server
     config["UseIndistinguishableTLS"] = true;
     config["DeviceRegion"] = WStringToUTF8(GetDeviceRegion());
     config["EmitDiagnosticNotices"] = true;
+    config["UpgradeDownloadUrl"] = string("https://") + UPGRADE_ADDRESS + UPGRADE_REQUEST_PATH;
+    config["UpgradeDownloadFilename"] = WStringToUTF8(upgradeFilePath);
+    config["UpgradeDownloadClientVersionHeader"] = string("x-amz-meta-psiphon-client-version");
 
     // Don't use an upstream proxy when in VPN mode. If the proxy is on a private network,
     // we may not be able to route to it. If the proxy is on a public network we prefer not
@@ -775,10 +782,65 @@ void CoreTransport::HandleCoreProcessOutputLine(const char* line)
                 m_hasEverConnected = true;
             }
         }
-        else if (noticeType == "ClientUpgradeAvailable")
-        {
-            string version = data["version"].asString();
-            m_sessionInfo.SetUpgradeVersion(version.c_str());
+        else if (noticeType == "ClientUpgradeDownloaded" && m_upgradePaver != NULL) {
+          HANDLE hFile = CreateFile(
+            UTF8ToWString(data["filename"].asString()).c_str(),
+            GENERIC_READ,
+            FILE_SHARE_READ,
+            NULL, // default security
+            OPEN_EXISTING, // existing file only
+            FILE_ATTRIBUTE_NORMAL,
+            NULL); // no attr. template
+
+          if (hFile == INVALID_HANDLE_VALUE) {
+            my_print(NOT_SENSITIVE, false, _T("Could not get a valid file handle: %s - (%d)."), __TFUNCTION__, GetLastError());
+            return;
+          }
+
+          DWORD dwFileSize = GetFileSize(hFile, NULL);
+          unique_ptr<BYTE> inBuffer(new BYTE[dwFileSize]);
+          if (!inBuffer)
+          {
+            throw std::exception(__FUNCTION__ ":" STRINGIZE(__LINE__) ": memory allocation failed");
+          }
+
+          DWORD dwBytesToRead = dwFileSize;
+          DWORD dwBytesRead = 0;
+          OVERLAPPED stOverlapped = { 0 };
+          string downloadFileString;
+
+          if (TRUE == ReadFile(hFile, inBuffer.get(), dwBytesToRead, &dwBytesRead, NULL)) {
+            if (verifySignedDataPackage(
+              UPGRADE_SIGNATURE_PUBLIC_KEY,
+              (const char *)inBuffer.get(),
+              dwFileSize,
+              true, // gzip compressed
+              downloadFileString))
+            {
+              // Data in the package is Base64 encoded
+              downloadFileString = Base64Decode(downloadFileString);
+
+              if (downloadFileString.length() > 0) {
+                m_upgradePaver->PaveUpgrade(downloadFileString);
+              }
+            }
+            else {
+              // Bad package. Log and continue.
+              my_print(NOT_SENSITIVE, false, _T("Upgrade package verification failed! Please report this error."));
+            }
+          }
+
+          // If the extract and verify succeeds, delete it since it's no longer
+          // required and we don't want to re-install it.
+          // If the file isn't working and we think we have the complete file,
+          // there may be corrupt bytes. So delete it and next time we'll start over.
+          // NOTE: this means if the failure was due to not enough free space
+          // to write the extracted file... we still re-download.
+          CloseHandle(hFile);
+          if (!DeleteFile(UTF8ToWString(data["filename"].asString()).c_str()) && GetLastError() != ERROR_FILE_NOT_FOUND)
+          {
+              throw std::exception("Upgrade - DeleteFile failed");
+          }
         }
         else if (noticeType == "Homepage")
         {
