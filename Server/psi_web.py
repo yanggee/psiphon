@@ -68,7 +68,7 @@ psinet = psi_ops.PsiphonNetwork.load_from_file(psi_config.DATA_FILE_NAME)
 
 # ===== Globals =====
 
-CLIENT_VERIFICATION_REQUIRED = True
+CLIENT_VERIFICATION_REQUIRED = False
 
 # one week TTL
 CLIENT_VERIFICATION_TTL_SECONDS = 60 * 60 * 24 * 7
@@ -738,6 +738,14 @@ class ServerInstance(object):
                             ('domain', domain),
                             ('bytes', bytes)
                         ])
+
+                # Older clients do not send this key
+                if 'remote_server_list_stats' in stats.keys():
+                    for remote_server_list in stats['remote_server_list_stats']:
+                        self._log_event('remote_server_list', inputs + [
+                            ('client_download_timestamp', remote_server_list['client_download_timestamp']),
+                            ('url', remote_server_list['url']),
+                            ('etag', remote_server_list['etag'])])
 
             except:
                 # Note that this response will cause clients to keep trying to send the same stats repeatedly, so bugs in the above code block
