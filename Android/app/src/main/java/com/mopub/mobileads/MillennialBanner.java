@@ -41,7 +41,7 @@ class MillennialBanner extends CustomEventBanner {
 
     @Override
     protected void loadBanner(final Context context, final CustomEventBannerListener customEventBannerListener,
-            final Map<String, Object> localExtras, final Map<String, String> serverExtras) {
+                              final Map<String, Object> localExtras, final Map<String, String> serverExtras) {
 
         LayoutParams lp;
         String apid;

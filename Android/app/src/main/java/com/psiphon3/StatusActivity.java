@@ -74,9 +74,6 @@ public class StatusActivity
 
     private boolean m_tunnelWholeDevicePromptShown = false;
     private boolean m_loadedSponsorTab = false;
-    private IabHelper mIabHelper = null;
-    private boolean mStartIabInProgress = false;
-    private boolean mIabHelperIsInitialized = false;
     private MoPubView m_moPubUntunneledBannerLargeAdView = null;
     private MoPubInterstitial m_moPubUntunneledInterstitial = null;
     private boolean m_moPubUntunneledInterstitialShowWhenLoaded = false;
@@ -85,6 +82,9 @@ public class StatusActivity
     private MoPubInterstitial m_moPubTunneledInterstitial = null;
     private int m_tunneledFullScreenAdCounter = 0;
     private boolean m_temporarilyDisableTunneledInterstitial = false;
+    private IabHelper mIabHelper = null;
+    private boolean mStartIabInProgress = false;
+    private boolean mIabHelperIsInitialized = false;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -106,6 +106,12 @@ public class StatusActivity
         
         super.onCreate(savedInstanceState);
 
+        !!!! TODO: implement this function
+        if (shouldShowUntunneledAds()) {
+            // Start at the Home tab if the service isn't running and we want to show ads
+            m_tabHost.setCurrentTabByTag("home");
+        }
+
         // EmbeddedValues.initialize(this); is called in MainBase.OnCreate
 
         m_loadedSponsorTab = false;
@@ -124,6 +130,12 @@ public class StatusActivity
     }
 
     @Override
+    protected void onPause()
+    {
+        super.onPause();
+    }
+
+    @Override
     protected void onResume()
     {
         startIab();
@@ -139,6 +151,14 @@ public class StatusActivity
     protected void onTunnelStateReceived() {
         m_temporarilyDisableTunneledInterstitial = false;
         initTunneledAds();
+    }
+    
+    @Override
+    public void onDestroy()
+    {
+        deInitAllAds();
+        delayHandler.removeCallbacks(enableAdMode);
+        super.onDestroy();
     }
     
     private void loadSponsorTab(boolean freshConnect)
@@ -257,20 +277,6 @@ public class StatusActivity
         }
     }
     
-    @Override
-    protected void onPause()
-    {
-        super.onPause();
-    }
-    
-    @Override
-    public void onDestroy()
-    {
-        deInitAllAds();
-        delayHandler.removeCallbacks(enableAdMode);
-        super.onDestroy();
-    }
-
     public void onToggleClick(View v)
     {
         doToggle();
@@ -1142,6 +1148,7 @@ public class StatusActivity
             @Override
             public void onInterstitialFailed(MoPubInterstitial interstitial,
                     MoPubErrorCode errorCode) {
+                m_moPubUntunneledInterstitial.load();
             }
             @Override
             public void onInterstitialLoaded(MoPubInterstitial interstitial) {

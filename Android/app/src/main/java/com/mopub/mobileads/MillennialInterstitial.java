@@ -34,7 +34,7 @@ class MillennialInterstitial extends CustomEventInterstitial {
 
     @Override
     protected void loadInterstitial(final Context context, final CustomEventInterstitialListener customEventInterstitialListener,
-            final Map<String, Object> localExtras, final Map<String, String> serverExtras) {
+                                    final Map<String, Object> localExtras, final Map<String, String> serverExtras) {
         String dcn;
         mInterstitialListener = customEventInterstitialListener;
         mContext = context;
@@ -209,7 +209,7 @@ class MillennialInterstitial extends CustomEventInterstitial {
 
         @Override
         public void onLoadFailed(InterstitialAd interstitialAd,
-                InterstitialErrorStatus interstitialErrorStatus) {
+                                 InterstitialErrorStatus interstitialErrorStatus) {
             Log.d(TAG, "Millennial Interstitial Ad - load failed (" + interstitialErrorStatus.getErrorCode() + "): " + interstitialErrorStatus.getDescription());
             final MoPubErrorCode moPubErrorCode;
 
@@ -258,7 +258,7 @@ class MillennialInterstitial extends CustomEventInterstitial {
 
         @Override
         public void onShowFailed(InterstitialAd interstitialAd,
-                InterstitialErrorStatus interstitialErrorStatus) {
+                                 InterstitialErrorStatus interstitialErrorStatus) {
             Log.e(TAG, "Millennial Interstitial Ad - Show failed (" + interstitialErrorStatus.getErrorCode() + "): " + interstitialErrorStatus.getDescription());
             UI_THREAD_HANDLER.post(new Runnable() {
                 @Override

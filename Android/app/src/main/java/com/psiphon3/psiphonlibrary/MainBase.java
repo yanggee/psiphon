@@ -167,8 +167,8 @@ public abstract class MainBase {
         private Toast m_invalidProxySettingsToast;
         private Button m_moreOptionsButton;
         private LoggingObserver m_loggingObserver;
-        private boolean m_serviceStateUIPaused = false;
         private boolean m_localProxySettingsHaveBeenReset = false;
+        private boolean m_serviceStateUIPaused = false;
 
         public TabbedActivityBase() {
             Utils.initializeSecureRandom();
@@ -981,7 +981,7 @@ public abstract class MainBase {
             m_serviceStateUIPaused = true;
             disableToggleServiceUI();
         }
-        
+
         protected void resumeServiceStateUI() {
             m_serviceStateUIPaused = false;
             updateServiceStateUI();
