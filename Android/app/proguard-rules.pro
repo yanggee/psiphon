@@ -38,9 +38,10 @@
 -dontwarn android.webkit.WebSettings
 -dontwarn com.google.android.exoplayer.**
 
--keepclassmembers class * implements android.os.Parcelable {
-    public static final android.os.Parcelable$Creator *;
-}
+-dontwarn com.vungle.**
+-keep class com.vungle.** { *; }
+-keep class javax.inject.*
+
 -keep public class com.google.android.gms.ads.** {
    public *;
 }
