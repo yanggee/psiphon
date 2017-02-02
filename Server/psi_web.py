@@ -237,12 +237,14 @@ class ServerInstance(object):
             ('tunnel_whole_device', is_valid_boolean_str)]
 
         self.OPTIONAL_COMMON_INPUTS = [
+            ('client_build_rev', lambda x: consists_of(x, string.hexdigits) or x == EMPTY_VALUE),
             ('device_region', lambda x: consists_of(x, string.letters) and len(x) == 2),
             ('meek_dial_address', is_valid_dial_address),
             ('meek_resolved_ip_address', is_valid_ip_address),
             ('meek_sni_server_name', is_valid_domain),
             ('meek_host_header', is_valid_host_header),
             ('meek_transformed_host_name', is_valid_boolean_str),
+            ('user_agent', lambda: x: isinstance(x, basestring) or x == EMPTY_VALUE),
             ('server_entry_region', lambda x: consists_of(x, string.letters) and len(x) == 2),
             ('server_entry_source', is_valid_server_entry_source),
             ('server_entry_timestamp', is_valid_iso8601_date),
@@ -794,7 +796,7 @@ class ServerInstance(object):
                 return [json.dumps({"client_verification_ttl_seconds":CLIENT_VERIFICATION_TTL_SECONDS})]
             else:
                 # Send valid empty JSON here.
-                # There is a bug in Android client v.133 that treats JSON parse failure as a 
+                # There is a bug in Android client v.133 that treats JSON parse failure as a
                 # failure to send payload and sends client into an infinite retry loop
                 return ['{}']
         else:
