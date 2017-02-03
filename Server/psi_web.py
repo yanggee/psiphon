@@ -244,7 +244,7 @@ class ServerInstance(object):
             ('meek_sni_server_name', is_valid_domain),
             ('meek_host_header', is_valid_host_header),
             ('meek_transformed_host_name', is_valid_boolean_str),
-            ('user_agent', lambda: x: isinstance(x, basestring) or x == EMPTY_VALUE),
+            ('user_agent', lambda x: isinstance(x, basestring) or x == EMPTY_VALUE),
             ('server_entry_region', lambda x: consists_of(x, string.letters) and len(x) == 2),
             ('server_entry_source', is_valid_server_entry_source),
             ('server_entry_timestamp', is_valid_iso8601_date),
