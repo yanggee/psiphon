@@ -382,10 +382,12 @@ class PsiphonNetwork(psi_ops_cms.PersistentObject):
 
         self.__default_sponsor_id = None
 
+        self.__alternate_s3_bucket_domains = set()
+
         if initialize_plugins:
             self.initialize_plugins()
 
-    class_version = '0.44'
+    class_version = '0.45'
 
     def upgrade(self):
         if cmp(parse_version(self.version), parse_version('0.1')) < 0:
@@ -661,6 +663,9 @@ class PsiphonNetwork(psi_ops_cms.PersistentObject):
             for host in self.__hosts_to_remove_from_providers:
                 host.TCS_type = 'DOCKER' if host.is_TCS else None
             self.version = '0.44'
+        if cmp(parse_version(self.version), parse_version('0.45')) < 0:
+            self.__alternate_s3_bucket_domains = set()
+            self.version = '0.45'
 
     def initialize_plugins(self):
         for plugin in plugins:
@@ -1758,12 +1763,12 @@ class PsiphonNetwork(psi_ops_cms.PersistentObject):
         # Deploy will upload web server source database data and client builds
         # (Only deploying for the new host, not broadcasting info yet...)
         psi_ops_deploy.deploy_implementation(host, servers, self.__discovery_strategy_value_hmac_key, plugins, self.__TCS_psiphond_config_values)
+        psi_ops_deploy.deploy_geoip_database_autoupdates(host)
         psi_ops_deploy.deploy_data(
                             host,
                             self.__compartmentalize_data_for_host(host.id, host.is_TCS),
                             self.__TCS_traffic_rules_set,
                             self.__TCS_OSL_config)
-        psi_ops_deploy.deploy_geoip_database_autoupdates(host)
         psi_ops_deploy.deploy_routes(host)
         host.log('initial deployment')
 
@@ -1895,10 +1900,17 @@ class PsiphonNetwork(psi_ops_cms.PersistentObject):
                 capabilities['UNFRONTED-MEEK'] = True
 
             if capabilities['UNFRONTED-MEEK']:
-                if random.random() < 0.5:
+                random_number = random.random()
+                if random_number < 0.33:
                     self.setup_meek_parameters_for_host(host, 80)
+                elif random_number < 0.66:
+                    ossh_port = 53
+                    self.setup_meek_parameters_for_host(host, 443)
                 else:
                     ossh_port = 53
+                    assert(host.is_TCS)
+                    capabilities['UNFRONTED-MEEK'] = False
+                    capabilities['UNFRONTED-MEEK-SESSION-TICKET'] = True
                     self.setup_meek_parameters_for_host(host, 443)
 
             # All and only TCS servers support SSH API requests
@@ -2109,6 +2121,7 @@ class PsiphonNetwork(psi_ops_cms.PersistentObject):
         psi_ops_install.install_host(host, servers, self.get_existing_server_ids(), plugins)
         psi_ops_install.change_weekly_crontab_runday(host, None)
         psi_ops_deploy.deploy_implementation(host, servers, self.__discovery_strategy_value_hmac_key, plugins, self.__TCS_psiphond_config_values)
+        psi_ops_deploy.deploy_geoip_database_autoupdates(host)
         # New data might have been generated
         # NOTE that if the client version has been incremented but a full deploy has not yet been run,
         # this following psi_ops_deploy.deploy_data call is not safe.  Data will specify a new version
@@ -2118,7 +2131,6 @@ class PsiphonNetwork(psi_ops_cms.PersistentObject):
                             self.__compartmentalize_data_for_host(host.id, host.is_TCS),
                             self.__TCS_traffic_rules_set,
                             self.__TCS_OSL_config)
-        psi_ops_deploy.deploy_geoip_database_autoupdates(host)
 
         host.log('reinstall')
 
@@ -2360,17 +2372,29 @@ class PsiphonNetwork(psi_ops_cms.PersistentObject):
 
         # The *_urls_json params supercede the legacy *_url_split params
 
-        remote_server_list_urls_json = \
-            '[{\\"URL\\": \\"%s\\", \\"OnlyAfterAttempts\\" : 0, \\"SkipVerify\\" : false}]' % (
-            base64.b64encode(urlparse.urlunsplit(remote_server_list_url_split)))
+        alternate_download_url_domains = None
+        number_of_alternate_download_url_domains = 3
+        if self.__alternate_s3_bucket_domains:
+            if len(self.__alternate_s3_bucket_domains) > number_of_alternate_download_url_domains:
+                alternate_download_url_domains = random.sample(self.__alternate_s3_bucket_domains, number_of_alternate_download_url_domains)
+            else:
+                alternate_download_url_domains = self.__alternate_s3_bucket_domains
 
-        OSL_root_urls_json = \
-            '[{\\"URL\\": \\"%s\\", \\"OnlyAfterAttempts\\" : 0, \\"SkipVerify\\" : false}]' % (
-            base64.b64encode(urlparse.urlunsplit(OSL_root_url_split)))
+        def download_urls(url_split):
+            urls = []
+            urls.append({'URL': base64.b64encode(urlparse.urlunsplit(url_split)),
+                         'OnlyAfterAttempts': 0,
+                         'SkipVerify': False})
+            if alternate_download_url_domains and url_split.path.startswith('/psiphon/'):
+                for domain in alternate_download_url_domains:
+                    urls.append({'URL': base64.b64encode('https://' + domain + url_split.path.split('/psiphon')[1]),
+                                 'OnlyAfterAttempts': 2,
+                                 'SkipVerify': True})
+            return urls
 
-        upgrade_urls_json = \
-            '[{\\"URL\\": \\"%s\\", \\"OnlyAfterAttempts\\" : 0, \\"SkipVerify\\" : false}]' % (
-            base64.b64encode(urlparse.urlunsplit(upgrade_url_split)))
+        remote_server_list_urls = download_urls(remote_server_list_url_split)
+        OSL_root_urls = download_urls(OSL_root_url_split)
+        upgrade_urls = download_urls(upgrade_url_split)
 
         return [builders[platform](
                         propagation_channel.id,
@@ -2379,9 +2403,9 @@ class PsiphonNetwork(psi_ops_cms.PersistentObject):
                         encoded_server_list,
                         remote_server_list_signature_public_key,
                         remote_server_list_url_split,
-                        remote_server_list_urls_json,
+                        json.dumps(remote_server_list_urls).replace('"', '\\"'),
                         OSL_root_url_split,
-                        OSL_root_urls_json,
+                        json.dumps(OSL_root_urls).replace('"', '\\"'),
                         feedback_encryption_public_key,
                         feedback_upload_info.upload_server,
                         feedback_upload_info.upload_path,
@@ -2389,7 +2413,7 @@ class PsiphonNetwork(psi_ops_cms.PersistentObject):
                         info_link_url,
                         upgrade_signature_public_key,
                         upgrade_url_split,
-                        upgrade_urls_json,
+                        json.dumps(upgrade_urls).replace('"', '\\"'),
                         get_new_version_url,
                         get_new_version_email,
                         faq_url,
