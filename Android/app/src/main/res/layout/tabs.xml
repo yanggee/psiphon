@@ -11,10 +11,18 @@
     android:layout_weight="1.0"
     android:orientation="vertical" >
 
+    <LinearLayout
+        android:id="@+id/largeAdSlot"
+        android:orientation="vertical"
+        android:layout_width="fill_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center" />
+
     <RelativeLayout
         android:id="@+id/tablayout"
         android:layout_width="fill_parent"
-        android:layout_height="wrap_content" >
+        android:layout_height="wrap_content"
+        android:layout_below="@+id/largeAdSlot" >
 
         <HorizontalScrollView
             android:layout_width="fill_parent"
@@ -53,12 +61,16 @@
                     android:padding="10dp"
                     android:orientation="vertical" >
 
-                    <LinearLayout
-                        android:id="@+id/largeAdSlot"
-                        android:orientation="vertical"
-                        android:layout_width="wrap_content"
+                    <Button
+                        android:id="@+id/subscribeButton"
+                        android:onClick="onSubscribeButtonClick"
+                        android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:layout_gravity="center" />
+                        android:layout_gravity="center"
+                        android:layout_margin="10dp"
+                        android:padding="10dp"
+                        android:text="@string/SubscribeButton"
+                        android:textAppearance="?android:attr/textAppearanceSmall" />
 
                     <ImageButton
                         android:id="@+id/statusViewImage"
@@ -212,6 +224,7 @@
                         android:text="@string/about"
                         android:textAppearance="?android:attr/textAppearanceSmall" />
                 </LinearLayout>
+
             </LinearLayout>
         </ScrollView>
 
