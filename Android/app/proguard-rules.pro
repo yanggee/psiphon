@@ -42,6 +42,10 @@
 -keep class com.vungle.** { *; }
 -keep class javax.inject.*
 
+-keep public class com.google.android.gms.ads.** {
+   public *;
+}
+
 -keep class com.aerserv.** { *; }
 -keepclassmembers class com.aerserv.** { *; }
 -dontwarn com.aerserv.**
