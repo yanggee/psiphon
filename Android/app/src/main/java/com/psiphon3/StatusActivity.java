@@ -56,6 +56,8 @@ import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 
+import io.presage.Presage;
+
 
 public class StatusActivity
     extends com.psiphon3.psiphonlibrary.MainBase.TabbedActivityBase
@@ -96,6 +98,9 @@ public class StatusActivity
         if (shouldShowUntunneledAds()) {
             // Start at the Home tab if the service isn't running and we want to show ads
             m_tabHost.setCurrentTabByTag("home");
+
+            Presage.getInstance().setContext(this.getBaseContext());
+            Presage.getInstance().start();
         }
 
         // EmbeddedValues.initialize(this); is called in MainBase.OnCreate
