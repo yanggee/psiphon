@@ -51,6 +51,18 @@
 -dontwarn com.aerserv.**
 -dontwarn com.moat.**
 
+# AdColony BEGIN
+
+# For communication with AdColony's WebView
+-keepclassmembers class * {
+    @android.webkit.JavascriptInterface <methods>;
+}
+
+# For removing warnings due to lack of Multi-Window support
+-dontwarn android.app.Activity
+
+# AdColony END
+
 # ---- PRESAGE - start
 
 -dontnote io.presage.**
