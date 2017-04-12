@@ -15,7 +15,7 @@
 
 package org.zirco.ui.activities;
 
-import com.psiphon3.R;
+import com.psiphon3.experimental.R;
 import org.zirco.utils.ApplicationUtils;
 
 import android.app.Activity;

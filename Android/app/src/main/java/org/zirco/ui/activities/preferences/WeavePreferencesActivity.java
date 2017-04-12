@@ -15,7 +15,7 @@
 
 package org.zirco.ui.activities.preferences;
 
-import com.psiphon3.R;
+import com.psiphon3.experimental.R;
 import org.zirco.utils.Constants;
 
 import android.content.Intent;

@@ -38,7 +38,7 @@ import android.util.Log;
 
 import com.psiphon3.psiphonlibrary.Utils.MyLog;
 
-import com.psiphon3.R;
+import com.psiphon3.experimental.R;
 
 public class Diagnostics
 {
