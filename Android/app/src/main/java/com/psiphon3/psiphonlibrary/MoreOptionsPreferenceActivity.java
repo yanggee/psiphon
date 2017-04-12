@@ -35,7 +35,7 @@ import android.text.InputType;
 import android.text.TextUtils;
 import android.widget.Toast;
 
-import com.psiphon3.R;
+import com.psiphon3.experimental.R;
 
 import net.grandcentrix.tray.AppPreferences;
 
