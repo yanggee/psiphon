@@ -18,7 +18,7 @@ package org.greendroid;
 import java.util.ArrayList;
 import java.util.List;
 
-import com.psiphon3.R;
+import com.psiphon3.experimental.R;
 
 import android.content.Context;
 import android.graphics.Color;
