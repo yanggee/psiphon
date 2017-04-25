@@ -25,6 +25,7 @@ import time
 import copy
 import json
 import shlex
+import signal
 
 from functools import wraps
 
@@ -70,6 +71,11 @@ def retry_on_exception_decorator(function):
                 pass
         raise e
     return wrapper
+
+
+class TunnelCoreCouldNotConnectException(Exception):
+    def __init__(self, *args):
+        Exception.__init__(self, *args)
 
 
 class TunnelCoreConsoleRunner:
@@ -155,7 +161,8 @@ class TunnelCoreConsoleRunner:
             if time.time() >= start_time + 25:
                 # if the sleep time is 25 second, get out while loop and keep going
                 print 'Not successfully connected after 25 second.'
-                break
+                raise TunnelCoreCouldNotConnectException('Could not connect after 25 seconds')
+
 
     def setup_proxy(self):
         return urllib3.ProxyManager("http://127.0.0.1:{http_port}".format(http_port=self.http_proxy_port))
@@ -163,7 +170,7 @@ class TunnelCoreConsoleRunner:
 
     def stop_psiphon(self):
         try:
-            self.proc.terminate()
+            self.proc.send_signal(signal.SIGINT)
             (stdin, stderr) = self.proc.communicate()
         except Exception as e:
             print e
@@ -237,7 +244,7 @@ def __test_server(runner, transport, expected_egress_ip_addresses, test_sites, s
         print "Could not tunnel to {0}: {1}".format(url, e)
         output['HTTP'] = output['HTTPS'] = 'FAIL'
     finally:
-        print "Stopping tunnel"
+        print "Stopping tunnel to {ipaddr}".format(ipaddr = expected_egress_ip_addresses)
         runner.stop_psiphon()
     
     return output
