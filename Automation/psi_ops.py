@@ -321,6 +321,7 @@ RoutesSigningKeyPair = psi_utils.recordtype(
 
 CLIENT_PLATFORM_WINDOWS = 'Windows'
 CLIENT_PLATFORM_ANDROID = 'Android'
+CLIENT_PLATFORM_IOS = 'iOS'
 
 
 class PsiphonNetwork(psi_ops_cms.PersistentObject):
@@ -680,8 +681,8 @@ class PsiphonNetwork(psi_ops_cms.PersistentObject):
             Twitter Campaigns:      %d
             Email Campaigns:        %d
             Total Campaigns:        %d
-            Hosts:                  %d
-            Servers:                %d
+            Hosts:                  %d (Legacy: %d, TCS Docker: %d, TCS Native: %d)
+            Servers:                %d (VPN: %d)
             Automation Bucket:      %s
             Stats Server:           %s
             Windows Client Version: %s %s
@@ -709,8 +710,8 @@ class PsiphonNetwork(psi_ops_cms.PersistentObject):
                      for sponsor in self.__sponsors.itervalues()]),
                 sum([len(sponsor.campaigns)
                      for sponsor in self.__sponsors.itervalues()]),
-                len(self.__hosts),
-                len(self.__servers),
+                len(self.__hosts), len([h for h in self.__hosts.itervalues() if h.is_TCS == False]), len([h for h in self.__hosts.itervalues() if h.is_TCS == True and h.TCS_type == 'DOCKER']), len([h for h in self.__hosts.itervalues() if h.is_TCS == True and h.TCS_type == 'NATIVE']),
+                len(self.__servers), len([s for s in self.__servers.itervalues() if s.capabilities['VPN'] == True]),
                 self.__automation_bucket if self.__automation_bucket else 'None',
                 self.__stats_server_account.ip_address if self.__stats_server_account else 'None',
                 self.__client_versions[CLIENT_PLATFORM_WINDOWS][-1].version if self.__client_versions[CLIENT_PLATFORM_WINDOWS] else 'None',
@@ -877,7 +878,7 @@ class PsiphonNetwork(psi_ops_cms.PersistentObject):
         s = self.__servers[server_id]
         print textwrap.dedent('''
             Server:                  %s
-            Host:                    %s%s %s %s/%s
+            Host:                    %s%s %s %s / %s
             IP Address:              %s
             Region:                  %s
             Propagation Channel:     %s
@@ -888,7 +889,7 @@ class PsiphonNetwork(psi_ops_cms.PersistentObject):
             ''') % (
                 s.id,
                 s.host_id,
-                " (TCS)" if self.__hosts[s.host_id].is_TCS else "",
+                " (TCS " + self.__hosts[s.host_id].TCS_type + ")" if self.__hosts[s.host_id].is_TCS else "",
                 self.__hosts[s.host_id].ip_address,
                 self.__hosts[s.host_id].ssh_username,
                 self.__hosts[s.host_id].ssh_password,
@@ -919,7 +920,7 @@ class PsiphonNetwork(psi_ops_cms.PersistentObject):
             Servers:                 %(servers)s
             ''') % {
                     'id': host.id,
-                    'is_TCS' : " (TCS)" if host.is_TCS else "",
+                    'is_TCS' : " (TCS " + host.TCS_type + ")" if host.is_TCS else "",
                     'provider': host.provider,
                     'provider_id': host.provider_id,
                     'datacenter_name': host.datacenter_name,
@@ -1513,7 +1514,7 @@ class PsiphonNetwork(psi_ops_cms.PersistentObject):
         host = self.__hosts[host_id]
         if host.is_TCS:
             return int(self.run_command_on_host(host,
-                'tac /var/log/psiphond/psiphond.log | grep -m1 ALL.*established_clients | python -c \'import sys, json; print json.loads(sys.stdin.read())["ALL"]["established_clients"]\''))
+                'tac /var/log/psiphond/psiphond.log | grep -m1 \\"establish_tunnels\\": | python -c \'import sys, json; print json.loads(sys.stdin.read())["ALL"]["established_clients"]\''))
         else:
             vpn_users = int(self.run_command_on_host(host,
                                                  'ifconfig | grep ppp | wc -l'))
@@ -1947,6 +1948,8 @@ class PsiphonNetwork(psi_ops_cms.PersistentObject):
 
             self.setup_server(host, [server])
 
+            self.run_command_on_host(host, 'shutdown -r')
+
             self.save()
 
         # The save() above ensures new server configuration is saved to CMS before deploying new
@@ -2116,7 +2119,7 @@ class PsiphonNetwork(psi_ops_cms.PersistentObject):
             migrated_from = 'Legacy'
 
         server.log('Migrated' + ' from ' + migrated_from + ' to TCS ' + TCS_type)
-        
+
         host.is_TCS = True
         host.TCS_type = TCS_type
 
@@ -2461,6 +2464,10 @@ class PsiphonNetwork(psi_ops_cms.PersistentObject):
             f.close()
         return upgrade_filename
 
+    def __deploy_implementation_to_hosts(self, hosts):
+        hosts_and_servers = [(host, [server for server in self.__servers.itervalues() if server.host_id == host.id]) for host in hosts]
+        psi_ops_deploy.deploy_implementation_to_hosts(hosts_and_servers, self.__discovery_strategy_value_hmac_key, plugins, self.__TCS_psiphond_config_values)
+
     def deploy(self):
         # Deploy as required:
         #
@@ -2480,7 +2487,7 @@ class PsiphonNetwork(psi_ops_cms.PersistentObject):
         # Host implementation
 
         hosts = [self.__hosts[host_id] for host_id in self.__deploy_implementation_required_for_hosts]
-        psi_ops_deploy.deploy_implementation_to_hosts(hosts, self.__discovery_strategy_value_hmac_key, plugins, self.__TCS_psiphond_config_values)
+        self.__deploy_implementation_to_hosts(hosts)
 
         if len(self.__deploy_implementation_required_for_hosts) > 0:
             self.__deploy_implementation_required_for_hosts.clear()
@@ -2927,7 +2934,7 @@ class PsiphonNetwork(psi_ops_cms.PersistentObject):
 
     def upgrade_all_TCS_hosts(self):
         TCS_hosts = [host for host in self.__hosts.itervalues() if host.is_TCS]
-        psi_ops_deploy.deploy_implementation_to_hosts(TCS_hosts, self.__discovery_strategy_value_hmac_key, plugins, self.__TCS_psiphond_config_values)
+        self.__deploy_implementation_to_hosts(TCS_hosts)
 
     def add_legacy_server_version(self):
         assert(self.is_locked)
@@ -3270,7 +3277,7 @@ class PsiphonNetwork(psi_ops_cms.PersistentObject):
         sponsor = self.__sponsors[sponsor_id]
         sponsor_home_pages = []
         home_pages = sponsor.home_pages
-        if client_platform == CLIENT_PLATFORM_ANDROID:
+        if client_platform in (CLIENT_PLATFORM_ANDROID, CLIENT_PLATFORM_IOS):
             if sponsor.mobile_home_pages:
                 home_pages = sponsor.mobile_home_pages
         # case: lookup succeeded and corresponding region home page found
@@ -3301,7 +3308,7 @@ class PsiphonNetwork(psi_ops_cms.PersistentObject):
     def __check_upgrade(self, platform, client_version):
         # check last version number against client version number
         # assumes versions list is in ascending version order
-        if not self.__client_versions[platform]:
+        if not self.__client_versions.get(platform):
             return None
         last_version = self.__client_versions[platform][-1].version
         if int(last_version) > int(client_version):
@@ -3322,6 +3329,8 @@ class PsiphonNetwork(psi_ops_cms.PersistentObject):
         platform = CLIENT_PLATFORM_WINDOWS
         if CLIENT_PLATFORM_ANDROID.lower() in client_platform_string.lower():
             platform = CLIENT_PLATFORM_ANDROID
+        elif client_platform_string.startswith(CLIENT_PLATFORM_IOS):
+            platform = CLIENT_PLATFORM_IOS
 
         if sponsor_id not in self.__sponsors and self.__default_sponsor_id and self.__default_sponsor_id in self.__sponsors:
             sponsor_id = self.__default_sponsor_id
@@ -3329,7 +3338,8 @@ class PsiphonNetwork(psi_ops_cms.PersistentObject):
         # Randomly choose one landing page from a set of landing pages
         # to give the client to open when connection established
         homepages = self.__get_sponsor_home_pages(sponsor_id, client_region, platform)
-        config['homepages'] = [random.choice(homepages)] if homepages else []
+        random.shuffle(homepages)
+        config['homepages'] = homepages
 
         # Tell client if an upgrade is available
         config['upgrade_client_version'] = self.__check_upgrade(platform, client_version)
