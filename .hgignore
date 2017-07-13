@@ -63,6 +63,7 @@ out/
 .tmproj
 nbproject
 Thumbs.db
+.vscode
 
 # Folders to ignore
 .hg
