@@ -1522,6 +1522,14 @@ class PsiphonNetwork(psi_ops_cms.PersistentObject):
                                                  'ps ax | grep ssh | grep psiphon | wc -l')) / 2
             return vpn_users + ssh_users
 
+    def __check_host_is_accepting_tunnels(self, host_id):
+        host = self.__hosts[host_id]
+        if host.is_TCS:
+            return 'True' == self.run_command_on_host(host,
+                'tac /var/log/psiphond/psiphond.log | grep -m1 \\"establish_tunnels\\": | python -c \'import sys, json; print json.loads(sys.stdin.read())["establish_tunnels"]\'').strip()
+        else:
+            raise Exception("not implemented")
+
     def __upgrade_host_datacenter_names(self):
         if self.__linode_account.api_key:
             linode_datacenter_names = psi_linode.get_datacenter_names(self.__linode_account)
@@ -1536,7 +1544,7 @@ class PsiphonNetwork(psi_ops_cms.PersistentObject):
         number_disabled = 0
         for server in servers:
             users_on_host = self.__count_users_on_host(server.host_id)
-            if users_on_host <= 10:
+            if users_on_host <= 15:
                 self.remove_host(server.host_id)
                 number_removed += 1
             elif users_on_host < 50:
@@ -1868,7 +1876,7 @@ class PsiphonNetwork(psi_ops_cms.PersistentObject):
             discovery = self.__copy_date_range(discovery_date_range) if discovery_date_range else None
 
             ssh_port = '22'
-            ossh_port = random.choice([53, 443])
+            ossh_port = random.choice([53, 443, 554])
             capabilities = ServerCapabilities()
 
             if server_capabilities:
@@ -1907,10 +1915,10 @@ class PsiphonNetwork(psi_ops_cms.PersistentObject):
                 if random_number < 0.33:
                     self.setup_meek_parameters_for_host(host, 80)
                 elif random_number < 0.66:
-                    ossh_port = 53
+                    ossh_port = random.choice([53, 554])
                     self.setup_meek_parameters_for_host(host, 443)
                 else:
-                    ossh_port = 53
+                    ossh_port = random.choice([53, 554])
                     assert(host.is_TCS)
                     capabilities['UNFRONTED-MEEK'] = False
                     capabilities['UNFRONTED-MEEK-SESSION-TICKET'] = True
@@ -2031,6 +2039,7 @@ class PsiphonNetwork(psi_ops_cms.PersistentObject):
             deleted_server.ssh_password = None
             deleted_server.ssh_host_key = None
             deleted_server.ssh_obfuscated_key = None
+            deleted_server.TCS_ssh_private_key = None
             self.__deleted_servers[server_id] = deleted_server
         # We don't assign host IDs and can't guarentee uniqueness, so not
         # archiving deleted host keyed by ID.
@@ -3245,7 +3254,7 @@ class PsiphonNetwork(psi_ops_cms.PersistentObject):
             servers = [server for server in self.__servers.itervalues()
                        if (server.propagation_channel_id == propagation_channel_id and
                            (server.is_permanent or (server.is_embedded and include_propagation_servers)))
-                       or (not test and (server.id in permanent_server_ids[0:50]))]
+                       or (not test and (server.id in permanent_server_ids[0:200]))]
         else:
             # discovery case
             if not discovery_date:
@@ -3874,7 +3883,9 @@ class PsiphonNetwork(psi_ops_cms.PersistentObject):
                                     [],
                                     '',         # remote_server_list_signature_public_key
                                     ('','','','',''), # remote_server_list_url
-                                    '',         # OSL_root_url_split
+                                    ('[{}]'), # remote_server_list_urls_json
+                                    '', # OSL_root_url_split
+                                    ('[{}]'), # OSL_root_urls_json
                                     '',         # feedback_encryption_public_key
                                     '',         # feedback_upload_server
                                     '',         # feedback_upload_path
@@ -3882,6 +3893,7 @@ class PsiphonNetwork(psi_ops_cms.PersistentObject):
                                     '',         # info_link_url
                                     '',         # upgrade_signature_public_key
                                     ('','','','',''), # upgrade_url
+                                    ('[{}]'), #upgrade_urls_json
                                     '',         # get_new_version_url
                                     '',         # get_new_version_email
                                     '',         # faq_url
@@ -4063,6 +4075,16 @@ def replace_propagation_channel_servers(propagation_channel_name):
         psinet.release()
 
 
+def run_deploy():
+    psinet = PsiphonNetwork.load(lock=True)
+    psinet.show_status()
+    try:
+        psinet.deploy()
+    finally:
+        psinet.show_status()
+        psinet.release()
+
+
 if __name__ == "__main__":
     parser = optparse.OptionParser('usage: %prog [options]')
     parser.add_option("-r", "--read-only", dest="readonly", action="store_true",
@@ -4072,6 +4094,8 @@ if __name__ == "__main__":
                       help="specify once for each of: handshake, VPN, OSSH, SSH, FRONTED-MEEK-OSSH, FRONTED-MEEK-HTTP-OSSH, UNFRONTED-MEEK-OSSH, UNFRONTED-MEEK-HTTPS-OSSH, UNFRONTED-MEEK-SESSION-TICKET-OSSH")
     parser.add_option("-u", "--update-routes", dest="updateroutes", action="store_true",
                       help="update external signed routes files")
+    parser.add_option("-d", "--deploy", dest="deploy", action="store_true",
+                      help="run deploy")
     parser.add_option("-p", "--prune", dest="prune", action="store_true",
                       help="prune all propagation channels")
     parser.add_option("-n", "--new-servers", dest="channel", action="store", type="string",
@@ -4081,6 +4105,8 @@ if __name__ == "__main__":
         replace_propagation_channel_servers(options.channel)
     elif options.prune:
         prune_all_propagation_channels()
+    elif options.deploy:
+        run_deploy()
     elif options.updateroutes:
         update_external_signed_routes()
     elif options.test:

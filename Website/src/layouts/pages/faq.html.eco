@@ -92,6 +92,12 @@ layout: page
       <img class="img-responsive" src="<%= @relativeToRoot '/images/faq/faq-authentic-windows.png' %>" alt="<%= @tt 'faq-authentic-windows-image-alt' %>">
     </p>
     <p>
+      <%= @tt 'faq-authentic-windows-answer-para-2020' %>
+    </p>
+    <p>
+      <code>89 fd cd 09 65 f4 dd 89 2b 25 7c 04 d5 b4 14 c7 ac 2b 5f 56</code>
+    </p>
+    <p>
       <%= @tt 'faq-authentic-windows-answer-para-2017' %>
     </p>
     <p>
@@ -221,6 +227,9 @@ $ jarsigner -verbose -verify PsiphonAndroid.apk</code></pre>
   </div>
   <div class="faq-answer">
     <p>
+      <%= @tt 'faq-android-enable-sideloading-answer-para-0' %>
+    </p>
+    <p>
       <%- @tt 'faq-android-enable-sideloading-answer-para-1' %>
     </p>
     <p>
@@ -312,6 +321,18 @@ $ jarsigner -verbose -verify PsiphonAndroid.apk</code></pre>
   <div class="faq-answer">
     <p>
       <%= @tt 'faq-proxy-all-answer-para-1' %>
+    </p>
+  </div>
+</div>
+
+<div class="row faq-qa">
+  <span class="anchor-target" id="proxy-all-ios-browser" data-anchor-text="<%= @tt 'faq-proxy-all-ios-browser-question' %>"></span>
+  <div class="faq-question">
+    <h3><%= @tt 'faq-proxy-all-ios-browser-question' %></h3>
+  </div>
+  <div class="faq-answer">
+    <p>
+      <%= @tt 'faq-proxy-all-ios-browser-answer-para-1' %>
     </p>
   </div>
 </div>
