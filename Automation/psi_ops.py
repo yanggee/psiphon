@@ -1544,7 +1544,7 @@ class PsiphonNetwork(psi_ops_cms.PersistentObject):
         number_disabled = 0
         for server in servers:
             users_on_host = self.__count_users_on_host(server.host_id)
-            if users_on_host <= 10:
+            if users_on_host <= 15:
                 self.remove_host(server.host_id)
                 number_removed += 1
             elif users_on_host < 50:
@@ -2039,6 +2039,7 @@ class PsiphonNetwork(psi_ops_cms.PersistentObject):
             deleted_server.ssh_password = None
             deleted_server.ssh_host_key = None
             deleted_server.ssh_obfuscated_key = None
+            deleted_server.TCS_ssh_private_key = None
             self.__deleted_servers[server_id] = deleted_server
         # We don't assign host IDs and can't guarentee uniqueness, so not
         # archiving deleted host keyed by ID.
@@ -4074,6 +4075,16 @@ def replace_propagation_channel_servers(propagation_channel_name):
         psinet.release()
 
 
+def run_deploy():
+    psinet = PsiphonNetwork.load(lock=True)
+    psinet.show_status()
+    try:
+        psinet.deploy()
+    finally:
+        psinet.show_status()
+        psinet.release()
+
+
 if __name__ == "__main__":
     parser = optparse.OptionParser('usage: %prog [options]')
     parser.add_option("-r", "--read-only", dest="readonly", action="store_true",
@@ -4083,6 +4094,8 @@ if __name__ == "__main__":
                       help="specify once for each of: handshake, VPN, OSSH, SSH, FRONTED-MEEK-OSSH, FRONTED-MEEK-HTTP-OSSH, UNFRONTED-MEEK-OSSH, UNFRONTED-MEEK-HTTPS-OSSH, UNFRONTED-MEEK-SESSION-TICKET-OSSH")
     parser.add_option("-u", "--update-routes", dest="updateroutes", action="store_true",
                       help="update external signed routes files")
+    parser.add_option("-d", "--deploy", dest="deploy", action="store_true",
+                      help="run deploy")
     parser.add_option("-p", "--prune", dest="prune", action="store_true",
                       help="prune all propagation channels")
     parser.add_option("-n", "--new-servers", dest="channel", action="store", type="string",
@@ -4092,6 +4105,8 @@ if __name__ == "__main__":
         replace_propagation_channel_servers(options.channel)
     elif options.prune:
         prune_all_propagation_channels()
+    elif options.deploy:
+        run_deploy()
     elif options.updateroutes:
         update_external_signed_routes()
     elif options.test:
