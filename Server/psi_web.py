@@ -68,7 +68,7 @@ psinet = psi_ops.PsiphonNetwork.load_from_file(psi_config.DATA_FILE_NAME)
 
 # ===== Globals =====
 
-CLIENT_VERIFICATION_REQUIRED = True
+CLIENT_VERIFICATION_REQUIRED = False
 
 # one week TTL
 CLIENT_VERIFICATION_TTL_SECONDS = 60 * 60 * 24 * 7
@@ -237,12 +237,14 @@ class ServerInstance(object):
             ('tunnel_whole_device', is_valid_boolean_str)]
 
         self.OPTIONAL_COMMON_INPUTS = [
+            ('client_build_rev', lambda x: consists_of(x, string.hexdigits) or x == EMPTY_VALUE),
             ('device_region', lambda x: consists_of(x, string.letters) and len(x) == 2),
             ('meek_dial_address', is_valid_dial_address),
             ('meek_resolved_ip_address', is_valid_ip_address),
             ('meek_sni_server_name', is_valid_domain),
             ('meek_host_header', is_valid_host_header),
             ('meek_transformed_host_name', is_valid_boolean_str),
+            ('user_agent', lambda x: isinstance(x, basestring) or x == EMPTY_VALUE),
             ('server_entry_region', lambda x: consists_of(x, string.letters) and len(x) == 2),
             ('server_entry_source', is_valid_server_entry_source),
             ('server_entry_timestamp', is_valid_iso8601_date),
@@ -374,7 +376,7 @@ class ServerInstance(object):
                 ' '.join([event_name] + [str(value.encode('utf8') if type(value) == unicode else value)
                                         for (name, value) in log_values if name not in self.OPTIONAL_COMMON_INPUT_NAMES]))
 
-        if event_name not in ['status', 'speed', 'routes', 'download']:
+        if event_name not in ['status', 'speed', 'routes', 'download', 'discovery', 'https_requests', 'page_views', 'failed']:
             json_log = {'event_name': event_name, 'timestamp': datetime.utcnow().isoformat() + 'Z', 'host_id': self.host_id}
             for key, value in log_values:
                 # convert a number in a string to a long
@@ -719,10 +721,12 @@ class ServerInstance(object):
                         self._log_event('session', inputs + [
                             ('session_id', tunnel['session_id']),
                             ('tunnel_number', tunnel['tunnel_number']),
-                            ('tunnel_server_ip_address', tunnel['tunnel_server_ip_address']),
+                            ('tunnel_server_ip_address', tunnel['tunnel_server_ip_address']),] +
+
                             # Tunnel Core sends establishment_duration in nanoseconds, divide to get to milliseconds
-                            ('establishment_duration', (int(tunnel['establishment_duration']) / 1000000)),
-                            ('server_handshake_timestamp', tunnel['server_handshake_timestamp']),
+                            ([('establishment_duration', (int(tunnel['establishment_duration']) / 1000000)),] if 'establishment_duration' in tunnel else []) +
+
+                            [('server_handshake_timestamp', tunnel['server_handshake_timestamp']),
                             # Tunnel Core sends duration in nanoseconds, divide to get to milliseconds
                             ('duration', (int(tunnel['duration']) / 1000000)),
                             ('total_bytes_sent', tunnel['total_bytes_sent']),
@@ -737,7 +741,17 @@ class ServerInstance(object):
                             ('bytes', bytes)
                         ])
 
+                # Older clients do not send this key
+                if 'remote_server_list_stats' in stats.keys():
+                    for remote_server_list in stats['remote_server_list_stats']:
+                        self._log_event('remote_server_list', inputs + [
+                            ('client_download_timestamp', remote_server_list['client_download_timestamp']),
+                            ('url', remote_server_list['url']),
+                            ('etag', remote_server_list['etag'])])
+
             except:
+                # Note that this response will cause clients to keep trying to send the same stats repeatedly, so bugs in the above code block
+                # can have bad consequences.
                 start_response('403 Forbidden', [])
                 return []
 
@@ -782,7 +796,7 @@ class ServerInstance(object):
                 return [json.dumps({"client_verification_ttl_seconds":CLIENT_VERIFICATION_TTL_SECONDS})]
             else:
                 # Send valid empty JSON here.
-                # There is a bug in Android client v.133 that treats JSON parse failure as a 
+                # There is a bug in Android client v.133 that treats JSON parse failure as a
                 # failure to send payload and sends client into an infinite retry loop
                 return ['{}']
         else:
